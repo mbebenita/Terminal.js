@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+  <meta charset="UTF-8">
+  <title></title>
+</head>
+<body style="background-color: #333333;">
+<script src="build/terminal.js"></script>
+<div id="terminal" style="position: fixed; left: 10px; right: 10px; top: 10px; bottom: 10px;"></div>
+
+<script>
+  var s = new Terminal.Screen(document.getElementById("terminal"));
+
+  function intro(e) {
+    for (var y = 0; y < s.h; y++) {
+      for (var x = 0; x < s.w; x++) {
+        s.putChar("X".charCodeAt(0), x, y, Math.random() * 0xFFFF);
+      }
+    }
+    s.invalidate();
+
+    if (e > 500) {
+      nextScene();
+    }
+  }
+
+  var text = [
+    "Terminal.js",
+    "===========%1",
+    "",
+    "Terminal.js is a lightweight text terminal written in WebGL. %5" +
+    "It can trace massive amounts of text without causing GC pauses, reflows or hanging your browser. %9",
+    "\n"
+  ];
+
+  function clear() {
+    s.clear();
+    nextScene();
+  }
+
+  function welcome(e) {
+    s.writeText("X");
+    if (s.cursor.x > 100) {
+      s.nextLine();
+    }
+    s.invalidate();
+  }
+
+  function writeLine(line) {
+    var i = 0;
+    return function () {
+      s.color = 0xFFFF;
+      if (line[i] === "%") {
+        var wait = line[i + 1] | 0;
+        i += 2;
+        return wait * 200;
+      }
+      if (s.cursor.x >= s.w) {
+        s.nextLine();
+      }
+      if (i === line.length) {
+        s.nextLine();
+        nextScene();
+        return;
+      }
+      s.writeText(line[i++]);
+      s.invalidate();
+      return 30;
+    }
+  }
+
+  function writeLines(lines) {
+    return lines.map(function (line) {
+      return writeLine(line);
+    });
+  }
+
+  function stop() {
+
+  }
+
+  function writeNumbers(count) {
+    var i = 0;
+    var k = 10;
+    return function () {
+      k *= 1.5;
+      for (var j = 0; j < k; j++) {
+        s.color = Math.random() * 0xFFFF;
+        s.writeText("0123456789"[i++ % 10]);
+        if (s.cursor.x >= s.w) {
+          s.nextLine();
+        }
+        if (i > count) {
+          nextScene();
+          return;
+        }
+      }
+    }
+  }
+
+  var scenes = [intro, clear];
+
+  scenes.push.apply(scenes, writeLines(text));
+  scenes.push(writeLine("About to write a bunch of characters %3.%3.%3.%3."));
+  scenes.push(writeLine(""));
+  scenes.push(writeNumbers(1024 * 1024));
+
+  scenes.push.apply(scenes, writeLines([
+    "\n\nDone",
+    "\nThe only interesting thing about this program is that the render loop is very tiny, one small texture upload and a single draw call. " +
+    "All the heaviy lifting is done in the fragment shader.",
+  ]));
+
+//  scenes.push(writeLine("\n\nDone"));
+//  scenes.push(writeLine("\n\nThe only interesting thing about this program is that the render loop is very small, one small texture upload and one draw call."));
+//  scenes.push(writeLine("\n\nThe only interesting thing about this program is that the render loop is very small, one small texture upload and one draw call."));
+//  scenes.push(writeLine("All the heaviy lifting is done in the fragment shader."));
+  scenes.push(stop);
+
+
+  var scene = null;
+  var sceneStart = 0;
+  var sceneIndex = -1;
+
+  function nextScene() {
+    sceneIndex  = (sceneIndex + 1) % scenes.length;
+    scene = scenes[sceneIndex];
+    sceneStart = performance.now();
+  }
+
+  nextScene();
+
+  function tick() {
+    var t = scene(performance.now() - sceneStart);
+    t = t | 16;
+    setTimeout(tick, t);
+  }
+
+  setTimeout(tick, 0);
+
+</script>
+</body>
+</html>
