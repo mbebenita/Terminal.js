@@ -23,4 +23,6 @@ If you are doing `printf` debugging and have to deal with lots of text data your
   * Text is encoded as a `Uint8Array` and uploaded to the GPU as a texture where it's then drawn by a fragment shader.
   * Aside from managing the memory of the text buffer, no allocations happen during tracing and rendering.
 
-# Usage: TODO
+# Demo: 
+
+http://mbebenita.github.io/Terminal.js/
