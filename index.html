@@ -4,136 +4,548 @@
   <meta charset="UTF-8">
   <title></title>
 </head>
-<body style="background-color: #333333;">
+<style>
+
+</style>
+<body>
 <script src="build/terminal.js"></script>
-<div id="terminal" style="position: fixed; left: 10px; right: 10px; top: 10px; bottom: 10px;"></div>
-<a href="https://github.com/mbebenita/Terminal.js"><img style="position: absolute; top: 0; right: 0; border: 0;" src="https://camo.githubusercontent.com/365986a132ccd6a44c23a9169022c0b5c890c387/68747470733a2f2f73332e616d617a6f6e6177732e636f6d2f6769746875622f726962626f6e732f666f726b6d655f72696768745f7265645f6161303030302e706e67" alt="Fork me on GitHub" data-canonical-src="https://s3.amazonaws.com/github/ribbons/forkme_right_red_aa0000.png"></a>
-<script>
-  var s = new Terminal.Screen(document.getElementById("terminal"));
-
-  function intro(e) {
-    for (var y = 0; y < s.h; y++) {
-      for (var x = 0; x < s.w; x++) {
-        s.putChar("X".charCodeAt(0), x, y, Math.random() * 0xFFFF);
-      }
-    }
-    s.invalidate();
-
-    if (e > 500) {
-      nextScene();
-    }
+<script src="https://cdn.rawgit.com/google/code-prettify/master/loader/run_prettify.js"></script>
+<style>
+  @font-face {
+    font-family: 'Open Sans Light';
+    src: url("https://mozorg.cdn.mozilla.net/media/fonts/OpenSans-Light-webfont.804037562eab.eot?#iefix") format('embedded-opentype'),url("https://mozorg.cdn.mozilla.net/media/fonts/OpenSans-Light-webfont.1c8075cacedb.woff") format('woff'),url("https://mozorg.cdn.mozilla.net/media/fonts/OpenSans-Light-webfont.ecb4572a5e47.ttf") format('truetype');
+    font-weight: normal;
+    font-style: normal
   }
 
-  var text = [
-    "Terminal.js",
-    "===========%1",
-    "",
-    "Terminal.js is a lightweight text terminal written in WebGL. %5" +
-    "It can trace massive amounts of text without causing GC pauses, reflows or hanging your browser. %9",
-    "\n"
-  ];
+  body {
+    background-color: #333333;
+    color: #ffffff;
+    font-size: 12px;
+    line-height: 18px;
+    font-family: 'Input Mono Condensed';
+  }
 
-  function clear() {
+  a {
+    color: #ffffff;
+    text-decoration: underline;
+  }
+
+  #terminalContainer {
+    background-color: #333333;
+    box-shadow: 0px 10px 100px black;
+    /*border-radius: 10px;*/
+    /*border: 2px solid #444444;*/
+    /*padding: 10px;*/
+    margin: 0px;
+    /*margin-top: 10px;*/
+    /*margin-bottom: 10px;*/
+    position: fixed;
+    top: 0px;
+    left: 0px;
+    right: 0px;
+  }
+
+  #terminalContainer.expanded {
+
+  }
+
+  #terminalContainer.stick {
+    position: fixed;
+    top: 0;
+    width: 100%;
+  }
+
+  h1 {
+    padding-top: 30px;
+  }
+
+  h3 {
+    padding-top: 20px;
+  }
+
+  /* desert scheme ported from vim to google prettify */
+  pre.prettyprint { display: block; background-color: #222; border: 0px; padding: 8px; }
+  pre .nocode { background-color: none; color: #000 }
+  pre .str { color: #ffa0a0 } /* string  - pink */
+  pre .kwd { color: #f0e68c; font-weight: bold }
+  pre .com { color: #87ceeb } /* comment - skyblue */
+  pre .typ { color: #98fb98 } /* type    - lightgreen */
+  pre .lit { color: #cd5c5c } /* literal - darkred */
+  pre .pun { color: #fff }    /* punctuation */
+  pre .pln { color: #fff }    /* plaintext */
+  pre .tag { color: #f0e68c; font-weight: bold } /* html/xml tag    - lightyellow */
+  pre .atn { color: #bdb76b; font-weight: bold } /* attribute name  - khaki */
+  pre .atv { color: #ffa0a0 } /* attribute value - pink */
+  pre .dec { color: #98fb98 } /* decimal         - lightgreen */
+
+  /* Specify class=linenums on a pre to get line numbering */
+  ol.linenums { margin-top: 0; margin-bottom: 0; color: #AEAEAE } /* IE indents via margin-left */
+  li.L0,li.L1,li.L2,li.L3,li.L5,li.L6,li.L7,li.L8 { list-style-type: none }
+  /* Alternate shading for lines */
+  li.L1,li.L3,li.L5,li.L7,li.L9 { }
+
+  @media print {
+    pre.prettyprint { background-color: none }
+    pre .str, code .str { color: #060 }
+    pre .kwd, code .kwd { color: #006; font-weight: bold }
+    pre .com, code .com { color: #600; font-style: italic }
+    pre .typ, code .typ { color: #404; font-weight: bold }
+    pre .lit, code .lit { color: #044 }
+    pre .pun, code .pun { color: #440 }
+    pre .pln, code .pln { color: #000 }
+    pre .tag, code .tag { color: #006; font-weight: bold }
+    pre .atn, code .atn { color: #404 }
+    pre .atv, code .atv { color: #060 }
+  }
+
+</style>
+
+<div id="terminalContainer">
+  <a href="https://github.com/mbebenita/Terminal.js"><img style="z-index: 100; position: absolute; top: 0; right: 0; border: 0;" src="https://camo.githubusercontent.com/365986a132ccd6a44c23a9169022c0b5c890c387/68747470733a2f2f73332e616d617a6f6e6177732e636f6d2f6769746875622f726962626f6e732f666f726b6d655f72696768745f7265645f6161303030302e706e67" alt="Fork me on GitHub" data-canonical-src="https://s3.amazonaws.com/github/ribbons/forkme_right_red_aa0000.png"></a>
+  <table style="width: 100%; height: 200px;">
+    <tr>
+      <td><div id="terminal" style="width: 100%; height: 200px;"></div></td>
+    </tr>
+  </table>
+</div>
+
+<div style="margin-top: 260px;">
+
+</div>
+
+<div class="anchor" sceneName="intro"></div>
+<h1>What is Screen.js</h1>
+<p>
+  Screen.js is a very simple and lightweight text rendering library.
+  Rendering text with varying font styles and colors is very expensive using current Web APIs.
+  One common approach is to use CSS/HTML to layout spans of text.
+  This is highly inefficent because it causes reflows and style computations.
+  Another popular approach is to use the Canvas text rendering APIs.
+  This is a lot faster but it still has performance problems, especially when changing font styles and colors.
+</p>
+<div class="anchor" sceneName="benchmark"></div>
+<h1>Optimized for Speed</h1>
+<p>
+  Screen.js uses hardware acceleration to render all text in a single WebGL draw call.
+  It uses neat <a href="http://blog.tojicode.com/2012/07/sprite-tile-maps-on-gpu.html">tile-based rendering</a> technique</a> I came across recently.
+  The basic idea is to use two textures: a standard sprite-sheet texture of text glyphs and a specially crafted glyph map texture.
+  The glyph map texture is very tiny, its width and height are equal to the number of columns and rows.
+  Each texel encodes the (x, y) coordinates of a glyph in the sprite-sheet along with some color information.
+  On every draw call, a new glyph map is uploaded to the GPU and a then fragment shader combines the two textures to render the screen.
+</p>
+
+<img src="textures.png" style="width: 640px">
+
+<p>
+  Screen.js gives you direct access to the underlying glyph map buffer.
+</p>
+
+<h1>Usage</h1>
+<h3>Creating a screen</h3>
+<p>
+  The Screen constructor creates a screen that stretches to fit the specified container HTMLElement.
+</p>
+<pre class="prettyprint">
+  var b = Screen(elContainer, 10); // Screen(container: HTMLElement, fontSize: number = 10);
+</pre>
+<h3>Writing Text</h3>
+<p>
+  Screen.js provides stateful low-level API. At any point you can read and modify these state variables.
+</p>
+<pre class="prettyprint">
+  s.x; // Current X cursor position.
+  s.y; // Current Y cursor position.
+  s.w; // Number of columns. (read-only)
+  s.h; // Number of rows. (read-only)
+  s.color; // Current font color.
+  s.backgroundColor; // Current background color.
+  s.style; // Current font style.
+</pre>
+<p>
+  To write a sequence of characters at position (5, 5) you can use the |writeCharCode| function: <button onclick="fnA()">Run</button>
+</p>
+<pre class="prettyprint">
+  s.moveTo(5, 5);
+  s.writeCharCode("H".charCodeAt(0)); // Write "H" at the current (x, y) position and advance to (x + 1, y).
+  s.writeCharCode("e".charCodeAt(0));
+  s.writeCharCode("l".charCodeAt(0));
+  s.writeCharCode("l".charCodeAt(0));
+  s.writeCharCode("o".charCodeAt(0));
+</pre>
+<p>
+  The |writeString| convenience function lets you do exactly the same thing.
+</p>
+<pre class="prettyprint">
+  s.moveTo(10, 10);
+  s.writeString("Hello");
+</pre>
+<p>
+  To change colors and styles modify the state variables beween calls to |writeCharCode|: <button onclick="fnB()">Run</button>
+</p>
+<pre class="prettyprint">
+  s.moveTo(1, 1);
+  s.writeCharCode("H".charCodeAt(0));
+  s.color = 0xF00D;
+  s.writeCharCode("e".charCodeAt(0));
+  s.style = 2;
+  s.writeCharCode("l".charCodeAt(0));
+  s.color = 0xAEAD;
+  s.writeCharCode("l".charCodeAt(0));
+  s.style = 1;
+  s.writeCharCode("o".charCodeAt(0));
+</pre>
+<p>
+  Screen.js encodes both the glyph index and the color with a 32-bit word.
+  We reserve 16-bits for the glyph index and 16-bits for the color.
+  To create 16-bit colors you can use the |makeColor| utility function which converts an (r, g, b) pair to
+  a 16-bit (565) color.
+</p>
+<h3>Raw Screen Buffer Access</h3>
+<p>
+  You can gain direct access to the screen buffer. However, if you modify the buffer
+  you'll need to make sure to call the |invalidate| function to trigger a repaint event. <button onclick="fnC()">Run</button>
+</p>
+<pre class="prettyprint">
+  var b = s.screenBuffer; // Uint8Array
+  for (var i = 0; i < b.length;) {
+    b[i++] = Math.random() * 8;   // Glyph x position.
+    b[i++] = Math.random() * 8;   // Glyph y position.
+    b[i++] = Math.random() * 255; // Glyph color.
+    b[i++] = Math.random() * 255; // ...
+  }
+  s.invalidate(); // Render screen.
+</pre>
+<h1>What Is It Good For?</h1>
+<p>
+  If you've gotten thus far you may be wondering, what's this thing really good for?
+  The original motivation for this library was to create an efficient text tracing
+  framework. One that that didn't interfere with the application being traced.
+  Browser debugging consoles are supposed to be built for this but in practice they are extremely inefficeint.
+</p>
+<p>
+  On its own, a screen is only useful as rendering backend for a text editor or some kind of visualization tool.
+  Screen.js provides several helper classes to help you manage text buffers and views on those buffers.
+</p>
+<h3>Working With Text Buffers</h3>
+<p>
+Text buffers hold variable-length lines of formatted text. <button onclick="fnD()">Run</button>
+</p>
+<pre class="prettyprint">
+  var b = new Buffer(32); // Creates an empty buffer with a 32 character maximum line length.
+  for (var i = 0; i < 100; i++) {
+    var k = Math.random() * 32;
+    for (var j = 0; j < k; j++) {
+      b.color = makeColor(Math.random() * 256 | 0, Math.random() * 256 | 0, Math.random() * 256 | 0);
+      b.writeString("X");
+    }
+    b.newLine(); // Start a new line.
+  }
+</pre>
+<p>
+  Now that we've filled a buffer, we'll need to display it using the |writeBuffer| function.
+  This copies a rectangular region of the buffer to the screen at its current (x, y) position.
+</p>
+<pre class="prettyprint">
+  s.writeBuffer(b); // Copy the buffer to the screen.
+</pre>
+<p>
+  We could also copy subregions of the buffer to the screen.
+</p>
+<pre class="prettyprint">
+  s.moveTo(40, 2);
+  // Copy a 4 x 10 text region from the buffer at position (3, 3) to the screen at position (32, 2);
+  s.writeBuffer(b, 3, 3, 4, 10);
+</pre>
+<h3>A Simple Text Log</h3>
+<p>
+  If we always copy the last part of the buffer to the screen, we're effectively scrolling to the
+  bottom of the buffer: <button onclick="fnE()">Run</button>
+</p>
+<pre class="prettyprint">
+  var b = new Buffer();
+  setInterval(function () {
+    var k = Math.random() * 32;
+    b.color = makeColor(Math.random() * 256 | 0, Math.random() * 256 | 0, Math.random() * 256 | 0);
+    for (var j = 0; j < k; j++) {
+      b.writeString("X");
+    }
+    b.newLine(); // Start a new line.
     s.clear();
-    nextScene();
-  }
+    s.writeBuffer(b, 0, b.h - s.h); // Copy the bottom of the buffer.
+  }, 1);
+</pre>
+<h3>A Browser Console</h3>
+<p>
+  The Screen.js Console class implements the Browser's Console API and writes its output into a buffer: <button onclick="fnF()">Run</button>
+</p>
+<pre class="prettyprint">
+  var b = new Buffer();
+  var c = new Console(b); // Create a Console that writes its output into a buffer.
+  setInterval(function () {
+    c.group('A');
+    c.log(123);
+    c.log("Testing", {a: i++, x: new Int32Array(Math.random() * 16 | 0), c: [2, 3, 4], b: {"THIS\nBAD": {a: 1, b: {a: {a: [2, 3, 4], b: {a: {a: 1, b: {a: 1}, c: [2,2,3,3]}}}}}}});
+    c.log([1, 2, 3]);
+    c.group();
+    c.log(123);
+    c.log(123);
+    c.warn("HELLO");
+    c.error("HELLO WORLD");
+    c.log([,,,new Int32Array(Math.random() * 8),,,,new Int32Array(Math.random() * 10)]);
+    c.log(new Int32Array(64));
+    c.time("AAA");
+    c.log(123);
+    c.timeEnd("AAA");
+    c.log(123);
+    c.groupEnd();
+    c.groupEnd();
+    s.clear();
+    s.writeBuffer(b, 0, b.h - s.h); // Copy the bottom of the buffer.
+  }, 1);
+</pre>
+<!--<button id="btnA" onclick="fnA()">A</button>-->
+<!--<button id="btnB" onclick="fnB()">B</button>-->
+<!--<button id="btnC" onclick="fnC()">C</button>-->
+<!--<button id="btnD" onclick="fnD()">D</button>-->
+<!--<button id="btnE" onclick="fnE()">E</button>-->
+<!--<button id="btnF" onclick="fnF()">F</button>-->
 
-  function welcome(e) {
-    s.writeText("X");
-    if (s.cursor.x > 100) {
-      s.nextLine();
+<div id="debug" style="position: absolute; top: 40px"></div>
+
+<script>
+  var elTerminalContainer = document.getElementById("terminalContainer");
+  var elAnchors = document.getElementsByClassName("anchor");
+  var elCurrentAnchor = null;
+
+  function onScroll() {
+    for (var i = 0; i < elAnchors.length; i++) {
+      var elAnchor = elAnchors[i];
+      if (elAnchor.getBoundingClientRect().top > 50) {
+        setAnchor(elAnchor);
+        break;
+      }
     }
-    s.invalidate();
   }
 
-  function writeLine(line) {
-    var i = 0;
-    return function () {
-      s.color = 0xFFFF;
-      if (line[i] === "%") {
-        var wait = line[i + 1] | 0;
-        i += 2;
-        return wait * 200;
-      }
-      if (s.cursor.x >= s.w) {
-        s.nextLine();
-      }
-      if (i === line.length) {
-        s.nextLine();
-        nextScene();
-        return;
-      }
-      s.writeText(line[i++]);
-      s.invalidate();
-      return 30;
+  window.addEventListener("scroll", onScroll);
+  onScroll();
+
+  window.addEventListener("keydown", function (event) {
+    console.log(event);
+    if (event.altKey && event.keyCode === 192) {
+      document.getElementById("terminalContainer").classList.toggle("expanded");
+    }
+  }, false);
+
+  function setAnchor(elAnchor) {
+    if (elCurrentAnchor === elAnchor) {
+      return;
+    }
+    if (elCurrentAnchor) {
+      stop(elCurrentAnchor.getAttribute("sceneName"));
+    }
+    elCurrentAnchor = elAnchor;
+    if (elCurrentAnchor) {
+      play(elCurrentAnchor.getAttribute("sceneName"));
     }
   }
 
-  function writeLines(lines) {
-    return lines.map(function (line) {
-      return writeLine(line);
-    });
+  function play(sceneName) {
+    switch (sceneName) {
+      case "intro": playIntro(); break;
+      case "benchmark": playBenchmark(); break;
+    }
   }
 
-  function stop() {
+  function stop(sceneName) {
+    switch (sceneName) {
+      case "intro": stopIntro(); break;
+      case "benchmark": stopBenchmark(); break;
+    }
+  }
+
+  function removeAllChildren(el) {
+    while (el.firstChild) {
+      el.removeChild(el.firstChild);
+    }
+  }
+
+  var introInterval = 0;
+  function playIntro() {
+    var elTerminal = document.getElementById("terminal");
+    removeAllChildren(elTerminal);
+    var s = new Terminal.Screen(elTerminal, 10);
+    s.backgroundColor = 0x333333;
+    s.moveTo(2, 3);
+    s.writeString("Screen.js");
+    s.moveTo(2, 4);
+    s.writeString("A simple library for rendering large amounts of text very quickly.");
+    setTimeout(function () {
+      introInterval = setInterval(function () {
+        for (var i = 0; i < 100; i++) {
+          s.color = Terminal.makeColor(Math.random() * 256 | 0, Math.random() * 256 | 0, Math.random() * 256 | 0);
+          var y = 0;
+          do {
+            y = Math.random() * s.h | 0;
+          } while (y > 1 && y < 6);
+          s.moveTo(Math.random() * s.w, y);
+          s.writeString(String.fromCharCode(Math.random() * 256 | 0));
+        }
+      }, 1);
+    }, 100);
+  }
+
+  function stopIntro() {
+    clearInterval(introInterval);
+  }
+
+  function playBenchmark() {
+    var elTerminal = document.getElementById("terminal");
+    removeAllChildren(elTerminal);
+    var s = new Terminal.Screen(elTerminal, 4);
+    introInterval = setInterval(function () {
+      for (var i = 0; i < 1000; i++) {
+        s.color = Terminal.makeColor(Math.random() * 256 | 0, Math.random() * 256 | 0, Math.random() * 256 | 0);
+        var y = Math.random() * s.h | 0;
+        s.moveTo(Math.random() * s.w, y);
+        // s.writeString("X");
+        s.writeCharCode("A".charCodeAt(0));
+      }
+    }, 1);
+  }
+
+  function stopBenchmark() {
 
   }
 
-  function writeNumbers(count) {
-    var i = 0;
-    var k = 10;
-    return function () {
-      k *= 1.5;
+  function fnA() {
+    setAnchor(null);
+    var elTerminal = document.getElementById("terminal");
+    removeAllChildren(elTerminal);
+    var s = new Terminal.Screen(elTerminal, 40);
+    s.backgroundColor = 0x333333;
+    s.moveTo(1, 1);
+    s.writeCharCode("H".charCodeAt(0)); // Write "H" at the current (x, y) position and advance to (x + 1, y).
+    s.writeCharCode("e".charCodeAt(0));
+    s.writeCharCode("l".charCodeAt(0));
+    s.writeCharCode("l".charCodeAt(0));
+    s.writeCharCode("o".charCodeAt(0));
+  }
+
+  function fnB() {
+    setAnchor(null);
+    var elTerminal = document.getElementById("terminal");
+    removeAllChildren(elTerminal);
+    var s = new Terminal.Screen(elTerminal, 40);
+    s.backgroundColor = 0x333333;
+    s.moveTo(1, 1);
+    s.writeCharCode("H".charCodeAt(0));
+    s.color = 0xF00D;
+    s.writeCharCode("e".charCodeAt(0));
+    s.style = 2;
+    s.writeCharCode("l".charCodeAt(0));
+    s.color = 0xAEAD;
+    s.writeCharCode("l".charCodeAt(0));
+    s.style = 1;
+    s.writeCharCode("o".charCodeAt(0));
+  }
+
+  function fnC() {
+    setAnchor(null);
+    var elTerminal = document.getElementById("terminal");
+    removeAllChildren(elTerminal);
+    var s = new Terminal.Screen(elTerminal, 8);
+    s.backgroundColor = 0x333333;
+    var b = s.screenBuffer; // Uint8Array
+    for (var i = 0; i < b.length;) {
+      b[i++] = Math.random() * 8;
+      b[i++] = Math.random() * 8;
+      b[i++] = Math.random() * 255;
+      b[i++] = Math.random() * 255;
+    }
+    s.invalidate(); // Render screen.
+  }
+
+  function fnD() {
+    setAnchor(null);
+    var elTerminal = document.getElementById("terminal");
+    removeAllChildren(elTerminal);
+    var s = new Terminal.Screen(elTerminal, 8);
+    s.backgroundColor = 0x333333;
+
+    var b = new Terminal.Buffer(32);
+    for (var i = 0; i < 100; i++) {
+      var k = Math.random() * 32;
+      b.color = Terminal.makeColor(Math.random() * 256 | 0, Math.random() * 256 | 0, Math.random() * 256 | 0);
       for (var j = 0; j < k; j++) {
-        s.color = Math.random() * 0xFFFF;
-        s.writeText("0123456789"[i++ % 10]);
-        if (s.cursor.x >= s.w) {
-          s.nextLine();
-        }
-        if (i > count) {
-          nextScene();
-          return;
-        }
+        b.writeString("X");
       }
+      b.newLine();
     }
+    s.writeBuffer(b, 0, 0);
+    s.moveTo(40, 2);
+    s.writeBuffer(b, 3, 3, 4, 10);
   }
 
-  var scenes = [intro, clear];
+  function fnE() {
+    setAnchor(null);
+    var elTerminal = document.getElementById("terminal");
+    removeAllChildren(elTerminal);
+    var s = new Terminal.Screen(elTerminal, 6);
+    s.backgroundColor = 0x333333;
 
-  scenes.push.apply(scenes, writeLines(text));
-  scenes.push(writeLine("About to write a bunch of characters %3.%3.%3.%3."));
-  scenes.push(writeLine(""));
-  scenes.push(writeNumbers(1024 * 1024));
-
-  scenes.push.apply(scenes, writeLines([
-    "\n\nDone",
-    "\nThe only interesting thing about this program is that the render loop is very tiny, one small texture upload and a single draw call. " +
-    "All the heavy lifting is done in the fragment shader.",
-  ]));
-
-  scenes.push(stop);
-
-
-  var scene = null;
-  var sceneStart = 0;
-  var sceneIndex = -1;
-
-  function nextScene() {
-    sceneIndex  = (sceneIndex + 1) % scenes.length;
-    scene = scenes[sceneIndex];
-    sceneStart = performance.now();
+    var b = new Terminal.Buffer();
+    var i = setInterval(function () {
+      var k = Math.random() * 128;
+      for (var j = 0; j < k; j++) {
+        b.writeString("X");
+      }
+      b.newLine(); // Start a new line.
+      s.clear();
+      s.writeBuffer(b, 0, b.h - s.h); // Copy the buffer to the screen.
+    }, 1);
+    setTimeout(function () {
+      clearInterval(i)
+    }, 1000);
   }
 
-  nextScene();
+  function fnF() {
+    setAnchor(null);
+    var elTerminal = document.getElementById("terminal");
+    removeAllChildren(elTerminal);
+    var s = new Terminal.Screen(elTerminal, 10);
+    s.backgroundColor = 0x333333;
 
-  function tick() {
-    var t = scene(performance.now() - sceneStart);
-    t = t | 16;
-    setTimeout(tick, t);
+    var b = new Terminal.Buffer();
+    var c = new Terminal.Con(b);
+    var j = 0;
+    var i = setInterval(function () {
+      var k = Math.random() * 128;
+      c.group('A');
+      c.log(123);
+      c.log("Testing", {a: j++, x: new Int32Array(Math.random() * 16 | 0), c: [2, 3, 4], b: {"THIS\nBAD": {a: 1, b: {a: {a: [2, 3, 4], b: {a: {a: 1, b: {a: 1}, c: [2,2,3,3]}}}}}}});
+      c.log([1, 2, 3]);
+      c.group();
+      c.log(123);
+      c.log(123);
+      c.warn("HELLO");
+      c.error("HELLO WORLD");
+      c.log([,,,new Int32Array(Math.random() * 8 | 0),,,,new Int32Array(Math.random() * 10 | 0)]);
+      c.log(new Int32Array(64));
+      c.time("AAA");
+      c.log(123);
+      c.timeEnd("AAA");
+      c.log(123);
+      c.groupEnd();
+      c.groupEnd();
+      s.clear();
+      s.writeBuffer(b, 0, b.h - s.h); // Copy the buffer to the screen.
+    }, 1);
+    setTimeout(function () {
+      clearInterval(i)
+    }, 1000);
   }
-
-  setTimeout(tick, 0);
-
 </script>
 </body>
 </html>

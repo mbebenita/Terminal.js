@@ -6,6 +6,15 @@ var Terminal;
     function clamp(value, min, max) {
         return Math.max(min, Math.min(max, value));
     }
+    function numberWithCommas(x) {
+        return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    }
+    function timeFormatter(x) {
+        return x.toFixed(2) + "ms";
+    }
+    function byteFormatter(x) {
+        return numberWithCommas(Math.round(x / 1024)) + "KB";
+    }
     function createProgramFromSource(gl, vertex, fragment) {
         var key = vertex + "-" + fragment;
         var program = createProgram(gl, [
@@ -57,28 +66,12 @@ var Terminal;
     function create2DProjection(width, height, depth) {
         // Note: This matrix flips the Y axis so 0 is at the top.
         return new Float32Array([
-            2 / width,
-            0,
-            0,
-            0,
-            0,
-            -2 / height,
-            0,
-            0,
-            0,
-            0,
-            2 / depth,
-            0,
-            -1,
-            1,
-            0,
-            1,
+            2 / width, 0, 0, 0,
+            0, -2 / height, 0, 0,
+            0, 0, 2 / depth, 0,
+            -1, 1, 0, 1,
         ]);
     }
-    (function (CharacterCode) {
-        CharacterCode[CharacterCode["NewLine"] = 10] = "NewLine";
-    })(Terminal.CharacterCode || (Terminal.CharacterCode = {}));
-    var CharacterCode = Terminal.CharacterCode;
     var Cursor = (function () {
         function Cursor(x, y) {
             this.x = x;
@@ -89,38 +82,49 @@ var Terminal;
     })();
     Terminal.Cursor = Cursor;
     var Buffer = (function () {
-        function Buffer() {
+        function Buffer(columns) {
+            if (columns === void 0) { columns = 1024 * 1024; }
             this.color = 0xFFFF;
+            this.style = 0 /* Normal */;
             this.clear();
             this.starts = new Uint32Array(32);
             this.buffer = new Uint8Array(1024 * 1024);
+            this.styles = new Uint8Array(1024 * 1024);
             this.colors = new Uint16Array(1024 * 1024);
+            this.columns = columns | 0;
         }
         Object.defineProperty(Buffer.prototype, "w", {
             /**
              * Number of columns.
              */
             get: function () {
-                return Math.max(this.previousMaxLineWidth, this.i - this.starts[this.h]);
+                return Math.max(this.previousMaxLineWidth, this.i - this.starts[this.h - 1]);
             },
             enumerable: true,
             configurable: true
         });
         Buffer.prototype.clear = function () {
-            this.h = 0;
+            this.h = 1;
             this.i = 0;
             this.version = 0;
             this.previousMaxLineWidth = 0;
         };
         Buffer.prototype.writeCharCode = function (x) {
+            if (this.i - this.starts[this.h - 1] >= this.columns) {
+                this.newLine();
+            }
             if (this.buffer.length === this.i) {
                 var buffer = new Uint8Array(this.buffer.length * 2);
                 buffer.set(this.buffer, 0);
                 this.buffer = buffer;
+                var styles = new Uint8Array(this.styles.length * 2);
+                styles.set(this.styles, 0);
+                this.styles = styles;
                 var colors = new Uint16Array(this.colors.length * 2);
                 colors.set(this.colors, 0);
                 this.colors = colors;
             }
+            this.styles[this.i] = this.style;
             this.colors[this.i] = this.color;
             this.buffer[this.i] = x;
             this.i++;
@@ -130,20 +134,20 @@ var Terminal;
             for (var i = 0; i < s.length; i++) {
                 var c = s.charCodeAt(i);
                 if (c === 10 /* NewLine */) {
-                    this.writeLine();
+                    this.newLine();
                     continue;
                 }
                 this.writeCharCode(c);
             }
         };
-        Buffer.prototype.writeLine = function () {
-            if (this.starts.length === this.h + 1) {
+        Buffer.prototype.newLine = function () {
+            if (this.starts.length === this.h) {
                 var starts = new Uint32Array(this.starts.length * 2);
                 starts.set(this.starts, 0);
                 this.starts = starts;
             }
-            this.previousMaxLineWidth = Math.max(this.previousMaxLineWidth, this.i - this.starts[this.h]);
-            this.starts[++this.h] = this.i;
+            this.previousMaxLineWidth = Math.max(this.previousMaxLineWidth, this.i - this.starts[this.h - 1]);
+            this.starts[this.h++] = this.i;
             this.version++;
         };
         return Buffer;
@@ -151,16 +155,30 @@ var Terminal;
     Terminal.Buffer = Buffer;
     var Screen = (function () {
         function Screen(container, fontSize) {
-            if (fontSize === void 0) { fontSize = 12; }
+            if (fontSize === void 0) { fontSize = 10; }
             this.container = container;
             this.fontSize = fontSize;
-            this.wrap = false;
+            /**
+             * Current background color.
+             */
+            this.backgroundColor = 0;
+            /**
+             * Current font style.
+             */
+            this.style = 0 /* Normal */;
             this.canvas = document.createElement("canvas");
+            this.canvas.style.position = "absolute";
             container.appendChild(this.canvas);
             var gl = this.gl = this.canvas.getContext("webgl", { alpha: false });
+            this.canvasOverlay = document.createElement("canvas");
+            this.canvasOverlay.style.position = "absolute";
+            (this.canvasOverlay.style).mixBlendMode = "screen";
+            (this.canvasOverlay.style).pointerEvents = "none";
+            container.appendChild(this.canvasOverlay);
+            this.cx = this.canvasOverlay.getContext("2d");
             gl.clearColor(0.0, 0.0, 0.0, 1);
             gl.clear(gl.COLOR_BUFFER_BIT);
-            this.cursor = new Cursor(0, 0);
+            this.x = this.y = 0;
             this.color = 0xFFFF;
             this.initialize();
             this.initializeColorPaletteTexture();
@@ -218,15 +236,15 @@ var Terminal;
             var backingStoreRatio = 1;
             if (devicePixelRatio !== backingStoreRatio) {
                 this.ratio = devicePixelRatio / backingStoreRatio;
-                this.canvas.width = cw * this.ratio;
-                this.canvas.height = ch * this.ratio;
-                this.canvas.style.width = cw + 'px';
-                this.canvas.style.height = ch + 'px';
+                this.canvasOverlay.width = this.canvas.width = cw * this.ratio;
+                this.canvasOverlay.height = this.canvas.height = ch * this.ratio;
+                this.canvasOverlay.style.width = this.canvas.style.width = cw + 'px';
+                this.canvasOverlay.style.height = this.canvas.style.height = ch + 'px';
             }
             else {
                 this.ratio = 1;
-                this.canvas.width = cw;
-                this.canvas.height = ch;
+                this.canvasOverlay.width = this.canvas.width = cw;
+                this.canvasOverlay.height = this.canvas.height = ch;
             }
             this.resize();
         };
@@ -253,6 +271,7 @@ var Terminal;
             gl.viewport(0, 0, this.canvas.width, this.canvas.height);
             this.screenBuffer = new Uint8Array(screenW * screenH * 4);
             this.screenBufferView = new Uint32Array(this.screenBuffer.buffer);
+            this.selectionBuffer = new Int32Array(1024);
             gl.bindTexture(gl.TEXTURE_2D, this.tileMapTexture);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
@@ -264,30 +283,13 @@ var Terminal;
             var w = this.canvas.width;
             var h = this.canvas.height;
             var f32 = new Float32Array([
-                0,
-                0,
-                0,
-                0,
-                w,
-                0,
-                1,
-                0,
-                w,
-                h,
-                1,
-                1,
-                0,
-                0,
-                0,
-                0,
-                w,
-                h,
-                1,
-                1,
-                0,
-                h,
-                0,
-                1
+                // x, y, u, v
+                0, 0, 0, 0,
+                w, 0, 1, 0,
+                w, h, 1, 1,
+                0, 0, 0, 0,
+                w, h, 1, 1,
+                0, h, 0, 1
             ]);
             gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
             gl.bufferData(gl.ARRAY_BUFFER, f32, gl.DYNAMIC_DRAW);
@@ -297,32 +299,37 @@ var Terminal;
             gl.vertexAttribPointer(program.attributes.aCoordinate.location, 2, gl.FLOAT, false, 16, 8);
             gl.uniform2f(program.uniforms.uTileSize.location, this.tileW / this.spriteCanvas.width, this.tileH / this.spriteCanvas.height);
             gl.uniform2f(program.uniforms.uScaledTileSize.location, 1 / screenW, 1 / screenH);
-            this.cursor.x = this.cursor.y = 0;
+            this.x = this.y = 0;
         };
         Screen.prototype.initializeSpriteSheet = function () {
             var fontSize = this.fontSize * this.ratio;
             this.spriteCanvas = document.createElement("canvas");
             var context = this.spriteCanvas.getContext("2d");
-            this.spriteCanvas.width = 1024;
-            this.spriteCanvas.height = 256;
-            context.fillStyle = "#000000";
-            context.fillRect(0, 0, this.spriteCanvas.width, this.spriteCanvas.height);
+            this.spriteCanvas.width = 2048;
+            this.spriteCanvas.height = 2048;
+            // context.fillStyle = "#000000";
+            // context.fillRect(0, 0, this.spriteCanvas.width, this.spriteCanvas.height);
             context.clearRect(0, 0, this.spriteCanvas.width, this.spriteCanvas.height);
             context.fillStyle = "white";
-            context.font = fontSize + 'px Input Mono Condensed, Consolas, Courier, monospace';
+            var baseFont = fontSize + 'px Input Mono Condensed, Consolas, Courier, monospace';
+            context.font = baseFont;
             context.textBaseline = "bottom";
             var metrics = context.measureText("A");
             var tileW = this.tileW = Math.ceil(metrics.width);
-            var hPadding = 4 * this.ratio;
-            var tileH = this.tileH = fontSize + hPadding;
+            var tileHPadding = this.tileHPadding = Math.ceil((fontSize / 4 | 0) * this.ratio);
+            var tileH = this.tileH = tileHPadding + fontSize;
             var tileColumns = this.tileColumns = this.spriteCanvas.width / tileW | 0;
             var j = 0;
-            for (var i = 0; i < 256; i++) {
-                var x = (j % tileColumns) | 0;
-                var y = (j / tileColumns) | 0;
-                var c = String.fromCharCode(i);
-                context.fillText(c, x * tileW, fontSize + hPadding + y * tileH);
-                j++;
+            var fontVariants = ["", "bold ", "italic ", "italic bold "];
+            for (var k = 0; k < fontVariants.length; k++) {
+                context.font = fontVariants[k] + baseFont;
+                for (var i = 0; i < Screen.glyphCount; i++) {
+                    var x = (j % tileColumns) | 0;
+                    var y = (j / tileColumns) | 0;
+                    var c = String.fromCharCode(i);
+                    context.fillText(c, x * tileW, fontSize + tileHPadding + y * tileH);
+                    j++;
+                }
             }
             var gl = this.gl;
             gl.bindTexture(gl.TEXTURE_2D, this.tileTexture);
@@ -331,14 +338,14 @@ var Terminal;
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.spriteCanvas);
-            // this.container.appendChild(this.spriteCanvas);
+            // document.getElementById("debug").appendChild(this.spriteCanvas);
         };
         Screen.prototype.uploadScreenTexture = function () {
             var gl = this.gl;
             gl.bindTexture(gl.TEXTURE_2D, this.tileMapTexture);
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.w, this.h, 0, gl.RGBA, gl.UNSIGNED_BYTE, this.screenBuffer);
         };
-        Screen.prototype.render = function () {
+        Screen.prototype.renderCanvas = function () {
             var gl = this.gl;
             var program = this.program;
             gl.activeTexture(gl.TEXTURE0);
@@ -353,12 +360,54 @@ var Terminal;
                 gl.uniform1i(program.uniforms.uColorPaletteSampler.location, 2);
             }
             gl.uniform1f(program.uniforms.uTime.location, performance.now() / 1000);
-            gl.clearColor(0x33 / 256, 0x33 / 256, 0x33 / 256, 1.0);
+            var r = (this.backgroundColor >> 16 & 0xff) / 256;
+            var g = (this.backgroundColor >> 8 & 0xff) / 256;
+            var b = (this.backgroundColor & 0xff) / 256;
+            gl.clearColor(r, g, b, 1.0);
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
             gl.disable(gl.DEPTH_TEST);
             gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
             gl.enable(gl.BLEND);
             gl.drawArrays(gl.TRIANGLES, 0, 6);
+        };
+        Screen.prototype.renderCanvasOverlay = function () {
+            this.cx.clearRect(0, 0, this.canvasOverlay.width, this.canvasOverlay.height);
+            this.renderSelectionBuffer();
+        };
+        Screen.prototype.select = function (x, y, l) {
+            var buffer = this.selectionBuffer;
+            for (var i = 0; i < buffer.length; i += 2) {
+                if (buffer[i] === 0) {
+                    buffer[i] = ((x + 1) << 16) | (y + 1);
+                    buffer[i + 1] = l;
+                    break;
+                }
+            }
+        };
+        Screen.prototype.clearAllSelections = function () {
+            var buffer = this.selectionBuffer;
+            for (var i = 0; i < buffer.length; i += 2) {
+                if (buffer[i]) {
+                    buffer[i] = 0;
+                }
+                else {
+                    break;
+                }
+            }
+        };
+        Screen.prototype.renderSelectionBuffer = function () {
+            var buffer = this.selectionBuffer;
+            for (var i = 0; i < buffer.length && buffer[i]; i += 2) {
+                var x = (buffer[i] >> 16) - 1;
+                var y = (buffer[i] & 0xFF) - 1;
+                var l = buffer[i + 1];
+                var x0 = x * this.tileW;
+                var y0 = y * this.tileH; //  - (this.tileHPadding / 2) | 0;
+                var dx = l * this.tileW;
+                var dy = this.tileH;
+                this.cx.fillStyle = "rgba(0, 100, 0, 1)";
+                this.cx.fillRect(x0, y0, dx, dy);
+            }
         };
         Screen.prototype.enterRenderLoop = function () {
             var self = this;
@@ -367,36 +416,17 @@ var Terminal;
             function tick() {
                 if (self.dirty) {
                     self.uploadScreenTexture();
-                    self.render();
+                    self.renderCanvas();
+                    self.renderCanvasOverlay();
                     self.dirty = false;
                 }
                 requestAnimationFrame(tick);
             }
             requestAnimationFrame(tick);
         };
-        Screen.prototype.move = function (x, y) {
-            this.cursor.x = x;
-            this.cursor.y = y;
-        };
-        Screen.prototype.next = function () {
-            this.cursor.x++;
-            if (this.cursor.x > this.w && this.wrap) {
-                this.cursor.x = 0;
-                this.cursor.y++;
-            }
-            if (this.cursor.y > this.h) {
-                this.cursor.x = 0;
-                this.cursor.y = 0;
-                this.scroll(1);
-            }
-        };
-        Screen.prototype.nextLine = function () {
-            this.cursor.y++;
-            this.cursor.x = 0;
-            if (this.cursor.y >= this.h) {
-                this.cursor.y--;
-                this.scroll(1);
-            }
+        Screen.prototype.moveTo = function (x, y) {
+            this.x = clamp(x | 0, 0, this.w);
+            this.y = clamp(y | 0, 0, this.h);
         };
         Screen.prototype.invalidate = function () {
             this.dirty = true;
@@ -406,85 +436,124 @@ var Terminal;
             for (var i = 0; i < view.length; i++) {
                 view[i] = 0;
             }
-        };
-        Screen.prototype.scroll = function (n) {
-            var h = this.h;
-            var w = this.w;
-            var view = this.screenBufferView;
-            for (var y = 0; y < h; y++) {
-                if (y >= h - n) {
-                    for (var x = 0; x < w; x++) {
-                        view[y * w + x] = 0;
-                    }
-                }
-                else {
-                    for (var x = 0; x < w; x++) {
-                        view[y * w + x] = view[(y + n) * w + x];
-                    }
-                }
-            }
-        };
-        Screen.prototype.setColor = function (r, g, b) {
-            r = clamp(r, 0, 255);
-            g = clamp(g, 0, 255);
-            b = clamp(b, 0, 255);
-            this.color = ((r / 256 * 32) & 0x1F) << 11 | ((g / 256 * 64) & 0x3F) << 5 | ((b / 256 * 32) & 0x1F) << 0;
-        };
-        Screen.prototype.writeCharCode = function (c) {
             this.invalidate();
-            if (c === 10 /* NewLine */) {
-                this.nextLine();
-                return;
-            }
-            var cursor = this.cursor;
+        };
+        //public scroll(n) {
+        //  var h = this.h;
+        //  var w = this.w;
+        //  var view = this.screenBufferView;
+        //  for (var y = 0; y < h; y++) {
+        //    if (y >= h - n) {
+        //      for (var x = 0; x < w; x++) {
+        //        view[y * w + x] = 0;
+        //      }
+        //    } else {
+        //      for (var x = 0; x < w; x++) {
+        //        view[y * w + x] = view[(y + n) * w + x];
+        //      }
+        //    }
+        //  }
+        //}
+        Screen.prototype.writeCharCode = function (c) {
             var w = this.w;
             var h = this.h;
-            if (cursor.x > w || cursor.x < 0 || cursor.y > h || cursor.y < 0) {
+            if (this.x >= w || this.x < 0 ||
+                this.y >= h || this.y < 0) {
                 return;
             }
+            this.invalidate();
             var buffer = this.screenBuffer;
-            var i = (this.w * cursor.y + cursor.x) * 4;
+            var i = (this.w * this.y + this.x) * 4;
+            c += Screen.glyphCount * this.style;
             var x = (c % this.tileColumns) | 0;
             var y = (c / this.tileColumns) | 0;
             buffer[i++] = x;
             buffer[i++] = y;
             buffer[i++] = this.color;
             buffer[i++] = this.color >> 8;
-            this.next();
+            if (this.x < this.w) {
+                this.x++;
+            }
         };
-        Screen.prototype.writeText = function (s) {
+        /**
+         * Writes a string starting at the current cursor position. If the string
+         * contains new line characters new lines will be inserted.
+         * @param s String to write.
+         */
+        Screen.prototype.writeString = function (s) {
             for (var i = 0; i < s.length; i++) {
                 this.writeCharCode(s.charCodeAt(i));
             }
         };
-        Screen.prototype.putChar = function (c, x, y, color) {
+        Screen.prototype.putChar = function (c, x, y, color, style) {
+            x = clamp(x | 0, 0, this.w);
+            y = clamp(y | 0, 0, this.h);
             var i = (y * this.w + x) * 4;
             var buffer = this.screenBuffer;
+            c += Screen.glyphCount * style;
             buffer[i++] = (c % this.tileColumns) | 0;
             buffer[i++] = (c / this.tileColumns) | 0;
             buffer[i++] = color;
             buffer[i++] = color >> 8;
         };
-        Screen.prototype.writeBuffer = function (buffer, x, y) {
-            var h = this.h, w = this.w;
-            x = clamp(x, 0, buffer.w - 1);
-            y = clamp(y, 0, buffer.h - 1);
-            var r = Math.min(h, buffer.h - y);
-            for (var j = 0; j < r; j++) {
-                var s = buffer.starts[y + j];
-                var e = buffer.starts[y + j + 1];
-                var l = e - s - x;
-                for (var i = 0; i < l; i++) {
-                    var p = s + x + i;
+        Screen.prototype.writeBuffer = function (buffer, sx, sy, sw, sh) {
+            if (sw === void 0) { sw = 1024; }
+            if (sh === void 0) { sh = 1024; }
+            var dx = this.x;
+            var dy = this.y;
+            sx = clamp(sx | 0, 0, buffer.w - 1);
+            sy = clamp(sy | 0, 0, buffer.h - 1);
+            sw = clamp(sw | 0, 0, buffer.w - sx);
+            sh = clamp(sh | 0, 0, buffer.h - sy);
+            var w = Math.min(sw, this.w - dx);
+            var h = Math.min(sh, this.h - dy);
+            for (var y = 0; y < h; y++) {
+                var s = buffer.starts[sy + y];
+                var e = sy + y + 1 === buffer.h ? buffer.i : buffer.starts[sy + y + 1];
+                var l = Math.min(e - s - sx, w);
+                for (var x = 0; x < l; x++) {
+                    var p = s + sx + x;
+                    if (p > buffer.i) {
+                        break;
+                    }
                     var c = buffer.buffer[p];
                     var color = buffer.colors[p];
-                    this.putChar(c, i, j, color);
+                    var style = buffer.styles[p];
+                    this.putChar(c, dx + x, dy + y, color, style);
                 }
             }
             this.invalidate();
         };
-        Screen.vertexShader = "uniform mat4 uTransformMatrix3D;                         " + "attribute vec4 aPosition;                                " + "attribute vec2 aCoordinate;                              " + "varying vec2 vCoordinate;                                " + "varying vec2 vCoordinate2;                               " + "void main() {                                            " + "  gl_Position = uTransformMatrix3D * aPosition;          " + "  vCoordinate = aCoordinate;                             " + "  vCoordinate2 = aCoordinate;                            " + "}";
-        Screen.fragmentShader = "precision mediump float;                                 " + "uniform sampler2D uTileSampler;                          " + "uniform sampler2D uTileMapSampler;                       " + "uniform sampler2D uColorPaletteSampler;                  " + "varying vec2 vCoordinate;                                " + "varying vec2 vCoordinate2;                               " + "uniform float uTime;                                     " + "uniform vec2 uTileSize;                                  " + "uniform vec2 uScaledTileSize;                            " + "void main() {                                            " + "  float time = uTime;                                    " + "  vec4 tile = texture2D(uTileMapSampler, vCoordinate);   " + "  if (tile.x == 0.0 && tile.y == 0.0) { discard; }       " + "  vec2 tileOffset = floor(tile.xy * 256.0) * uTileSize;  " + "  vec2 tileCoordinate = tileOffset + mod(vCoordinate, uScaledTileSize) * (uTileSize / uScaledTileSize);" + "  vec4 color = texture2D(uTileSampler, tileCoordinate) * texture2D(uColorPaletteSampler, tile.zw);   " + "  color.rgb *= color.a;" + "  gl_FragColor = color;" + "}";
+        Screen.vertexShader = "uniform mat4 uTransformMatrix3D;                         " +
+            "attribute vec4 aPosition;                                " +
+            "attribute vec2 aCoordinate;                              " +
+            "varying vec2 vCoordinate;                                " +
+            "varying vec2 vCoordinate2;                               " +
+            "void main() {                                            " +
+            "  gl_Position = uTransformMatrix3D * aPosition;          " +
+            "  vCoordinate = aCoordinate;                             " +
+            "  vCoordinate2 = aCoordinate;                            " +
+            "}";
+        Screen.fragmentShader = "precision mediump float;                                 " +
+            "uniform sampler2D uTileSampler;                          " +
+            "uniform sampler2D uTileMapSampler;                       " +
+            "uniform sampler2D uColorPaletteSampler;                  " +
+            "varying vec2 vCoordinate;                                " +
+            "varying vec2 vCoordinate2;                               " +
+            "uniform float uTime;                                     " +
+            "uniform vec2 uTileSize;                                  " +
+            "uniform vec2 uScaledTileSize;                            " +
+            "void main() {                                            " +
+            "  float time = uTime;                                    " +
+            "  vec4 tile = texture2D(uTileMapSampler, vCoordinate);   " +
+            "  if (tile.x == 0.0 && tile.y == 0.0) { discard; }       " +
+            "  vec2 tileOffset = floor(tile.xy * 256.0) * uTileSize;  " +
+            "  vec2 tileCoordinate = tileOffset + mod(vCoordinate, uScaledTileSize) * (uTileSize / uScaledTileSize);" +
+            "  vec4 color = texture2D(uTileSampler, tileCoordinate) * texture2D(uColorPaletteSampler, tile.zw);   " +
+            "  color.rgb *= color.a;" +
+            "  gl_FragColor = color;" +
+            "}";
+        Screen.glyphCount = 256;
         return Screen;
     })();
     Terminal.Screen = Screen;
@@ -501,7 +570,7 @@ var Terminal;
             this.y = 0;
             this.screen = screen;
             this.buffer = buffer;
-            this.version = buffer.version;
+            this.version = 0;
             this.enterRenderLoop();
             var boundOnMouseWheel = this.onMouseWheel.bind(this);
             screen.canvas.addEventListener(("onwheel" in document ? "wheel" : "mousewheel"), boundOnMouseWheel, false);
@@ -537,12 +606,16 @@ var Terminal;
         };
         View.prototype.scrollToBottom = function () {
             this.x = 0;
-            this.y = clamp(this.buffer.h - this.screen.h, 0, this.buffer.h);
+            this.y = clamp(this.buffer.h - this.screen.h, 0, this.buffer.h - 1);
             this.render();
         };
         View.prototype.render = function () {
             this.screen.clear();
-            this.screen.writeBuffer(this.buffer, this.x | 0, this.y | 0);
+            this.screen.moveTo(0, 0);
+            this.screen.writeBuffer(this.buffer, this.x | 0, this.y | 0, undefined, this.screen.h - 2);
+            this.screen.color = makeColor(256, 256, 0);
+            this.screen.moveTo(0, this.screen.h - 1);
+            this.screen.writeString("Buffer: " + byteFormatter(this.buffer.i) + " Lines: " + numberWithCommas(this.buffer.h));
         };
         View.prototype.enterRenderLoop = function () {
             var self = this;
@@ -558,5 +631,212 @@ var Terminal;
         return View;
     })();
     Terminal.View = View;
+    function makeColor(r, g, b) {
+        r = clamp(r | 0, 0, 255);
+        g = clamp(g | 0, 0, 255);
+        b = clamp(b | 0, 0, 255);
+        return ((r / 256 * 32) & 0x1F) << 11 |
+            ((g / 256 * 64) & 0x3F) << 5 |
+            ((b / 256 * 32) & 0x1F) << 0;
+    }
+    Terminal.makeColor = makeColor;
+    function removeNewLineCharacter(s) {
+        if (s.indexOf("\n") >= 0) {
+            return s.split("\n").join("_");
+        }
+        return s;
+    }
+    var maxDepth = 4;
+    var maxArray = 8;
+    var keyColor = makeColor(0, 255, 0);
+    var metaColor = makeColor(0, 255, 0);
+    var textColor = makeColor(255, 255, 255);
+    var stringColor = textColor;
+    var numberColor = makeColor(0, 255, 255);
+    var logColor = makeColor(255, 255, 255);
+    var warnColor = makeColor(255, 255, 0);
+    var errorColor = makeColor(255, 0, 0);
+    var Con = (function () {
+        function Con(buffer) {
+            this.groupDepth = 0;
+            this.buffer = buffer;
+            this.timers = Object.create(null);
+        }
+        Con.prototype.logValue = function (x, depth) {
+            var b = this.buffer;
+            var c = b.color;
+            if (typeof x === "number") {
+                b.color = numberColor;
+                b.writeString(String(x));
+            }
+            else if (typeof x === "string") {
+                b.color = stringColor;
+                if (x.indexOf("\n") >= 0) {
+                    var t = x.split("\n");
+                    for (var i = 0; i < t.length; i++) {
+                        if (i > 0) {
+                            this.buffer.newLine();
+                            this.writeGutter(" ", textColor);
+                        }
+                        b.writeString(t[i]);
+                    }
+                }
+                else {
+                    b.writeString(x);
+                }
+            }
+            else if (typeof x === "object") {
+                if (depth < maxDepth) {
+                    if (Array.isArray(x) || ArrayBuffer.isView(x)) {
+                        b.color = textColor;
+                        b.writeString("[");
+                        var s = Math.min(x.length, maxArray);
+                        for (var i = 0; i < s; i++) {
+                            this.logValue(x[i], depth + 1);
+                            if (i < x.length - 1) {
+                                b.writeString(", ");
+                            }
+                        }
+                        if (x.length > 8) {
+                            b.writeString("...");
+                        }
+                        b.writeString("]");
+                        if (x.length > 8 && depth === 0) {
+                            b.color = metaColor;
+                            b.writeString(" " + x.constructor.name + "[" + x.length + "]");
+                        }
+                    }
+                    else {
+                        b.color = textColor;
+                        b.writeString("{");
+                        var keys = Object.keys(x);
+                        for (var i = 0; i < keys.length; i++) {
+                            b.color = keyColor;
+                            b.style = 2 /* Italic */;
+                            b.writeString(removeNewLineCharacter(keys[i]));
+                            b.color = textColor;
+                            b.style = 0 /* Normal */;
+                            b.writeString(": ");
+                            this.logValue(x[keys[i]], depth + 1);
+                            if (i < keys.length - 1) {
+                                b.writeString(", ");
+                            }
+                        }
+                        b.writeString("}");
+                    }
+                }
+                else {
+                    b.color = textColor;
+                    if (Array.isArray(x)) {
+                        b.writeString("[Array]");
+                    }
+                    else {
+                        b.writeString("[Object]");
+                    }
+                }
+            }
+            b.color = c;
+        };
+        //assert(test?: boolean, message?: string, ...optionalParams: any[]): void;
+        //info(message?: any, ...optionalParams: any[]): void;
+        Con.prototype.writeGutter = function (prefix, color) {
+            this.buffer.color = color;
+            this.buffer.writeString(prefix);
+            for (var i = 0; i < this.groupDepth; i++) {
+                this.buffer.writeString("  ");
+            }
+        };
+        Con.prototype.log = function (message) {
+            var optionalParams = [];
+            for (var _i = 1; _i < arguments.length; _i++) {
+                optionalParams[_i - 1] = arguments[_i];
+            }
+            this.writeGutter(" ", logColor);
+            for (var i = 0; i < arguments.length; i++) {
+                this.logValue(arguments[i], 0);
+                if (i < arguments.length - 1) {
+                    this.buffer.writeString(" ");
+                }
+            }
+            this.buffer.newLine();
+        };
+        Con.prototype.warn = function (message) {
+            var optionalParams = [];
+            for (var _i = 1; _i < arguments.length; _i++) {
+                optionalParams[_i - 1] = arguments[_i];
+            }
+            this.writeGutter("~", warnColor);
+            for (var i = 0; i < arguments.length; i++) {
+                this.logValue(arguments[i], 0);
+                if (i < arguments.length - 1) {
+                    this.buffer.writeString(" ");
+                }
+            }
+            this.buffer.newLine();
+        };
+        Con.prototype.error = function (message) {
+            var optionalParams = [];
+            for (var _i = 1; _i < arguments.length; _i++) {
+                optionalParams[_i - 1] = arguments[_i];
+            }
+            this.writeGutter("!", errorColor);
+            for (var i = 0; i < arguments.length; i++) {
+                this.logValue(arguments[i], 0);
+                if (i < arguments.length - 1) {
+                    this.buffer.writeString(" ");
+                }
+            }
+            this.buffer.newLine();
+        };
+        Con.prototype.put = function (message) {
+            // this.writeGutter(" ", logColor);
+            for (var i = 0; i < arguments.length; i++) {
+                this.logValue(arguments[i], 0);
+                if (i < arguments.length - 1) {
+                    this.buffer.writeString(" ");
+                }
+            }
+        };
+        //profile(reportName?: string): void;
+        //assert(test?: boolean, message?: string, ...optionalParams: any[]): void;
+        //msIsIndependentlyComposed(element: Element): boolean;
+        //clear(): void;
+        //dir(value?: any, ...optionalParams: any[]): void;
+        //profileEnd(): void;
+        //count(countTitle?: string): void;
+        Con.prototype.time = function (timerName) {
+            this.timers[timerName] = performance.now();
+        };
+        Con.prototype.timeEnd = function (timerName) {
+            var s = this.timers[timerName];
+            if (s === undefined) {
+                this.log("Timer: " + timerName + " not started.");
+            }
+            this.log(timerName + ": " + timeFormatter(performance.now() - s));
+        };
+        Con.prototype.trace = function () {
+            var stack = (new Error()).stack.split("\n");
+            for (var i = 0; i < stack.length; i++) {
+                this.log(stack[i]);
+            }
+        };
+        Con.prototype.group = function (groupTitle) {
+            if (groupTitle === void 0) { groupTitle = ""; }
+            if (groupTitle) {
+                this.writeGutter(" ", textColor);
+                this.buffer.writeString("> " + groupTitle);
+                this.buffer.newLine();
+            }
+            this.groupDepth++;
+        };
+        Con.prototype.groupEnd = function () {
+            this.groupDepth--;
+            if (this.groupDepth < 0) {
+                this.groupDepth = 0;
+            }
+        };
+        return Con;
+    })();
+    Terminal.Con = Con;
 })(Terminal || (Terminal = {}));
 //# sourceMappingURL=terminal.js.map
