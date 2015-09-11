@@ -1,0 +1,7 @@
+{
+  "name": "Terminal.js",
+  "version": "0.1.0",
+  "devDependencies": {
+    "typescript": "1.5.3"
+  }
+}
