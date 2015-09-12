@@ -3,6 +3,7 @@
 <head lang="en">
   <meta charset="UTF-8">
   <title></title>
+  <link href="//cloud.webtype.com/css/4f469b1e-d9a8-49fe-85cd-a33e72c6d333.css" rel="stylesheet" type="text/css" />
 </head>
 <style>
 
@@ -11,19 +12,12 @@
 <script src="build/terminal.js"></script>
 <script src="https://cdn.rawgit.com/google/code-prettify/master/loader/run_prettify.js"></script>
 <style>
-  @font-face {
-    font-family: 'Open Sans Light';
-    src: url("https://mozorg.cdn.mozilla.net/media/fonts/OpenSans-Light-webfont.804037562eab.eot?#iefix") format('embedded-opentype'),url("https://mozorg.cdn.mozilla.net/media/fonts/OpenSans-Light-webfont.1c8075cacedb.woff") format('woff'),url("https://mozorg.cdn.mozilla.net/media/fonts/OpenSans-Light-webfont.ecb4572a5e47.ttf") format('truetype');
-    font-weight: normal;
-    font-style: normal
-  }
-
   body {
     background-color: #333333;
     color: #ffffff;
     font-size: 12px;
     line-height: 18px;
-    font-family: 'Input Mono Condensed';
+    font-family: 'Input Mono Cond';
   }
 
   a {
@@ -114,8 +108,13 @@
 
 </div>
 
-<div class="anchor" sceneName="intro"></div>
+
+<div id="debug"></div>
+
+
+
 <h1>What is Screen.js</h1>
+<div class="anchor" sceneName="intro"></div>
 <p>
   Screen.js is a very simple and lightweight text rendering library.
   Rendering text with varying font styles and colors is very expensive using current Web APIs.
@@ -163,7 +162,7 @@
   s.style; // Current font style.
 </pre>
 <p>
-  To write a sequence of characters at position (5, 5) you can use the |writeCharCode| function: <button onclick="fnA()">Run</button>
+  To write a sequence of characters at position (5, 5) you can use the |writeCharCode| function: <button onclick="fnA()">Play</button>
 </p>
 <pre class="prettyprint">
   s.moveTo(5, 5);
@@ -181,7 +180,7 @@
   s.writeString("Hello");
 </pre>
 <p>
-  To change colors and styles modify the state variables beween calls to |writeCharCode|: <button onclick="fnB()">Run</button>
+  To change colors and styles modify the state variables beween calls to |writeCharCode|: <button onclick="fnB()">Play</button>
 </p>
 <pre class="prettyprint">
   s.moveTo(1, 1);
@@ -204,7 +203,7 @@
 <h3>Raw Screen Buffer Access</h3>
 <p>
   You can gain direct access to the screen buffer. However, if you modify the buffer
-  you'll need to make sure to call the |invalidate| function to trigger a repaint event. <button onclick="fnC()">Run</button>
+  you'll need to make sure to call the |invalidate| function to trigger a repaint event. <button onclick="fnC()">Play</button>
 </p>
 <pre class="prettyprint">
   var b = s.screenBuffer; // Uint8Array
@@ -229,7 +228,7 @@
 </p>
 <h3>Working With Text Buffers</h3>
 <p>
-Text buffers hold variable-length lines of formatted text. <button onclick="fnD()">Run</button>
+Text buffers hold variable-length lines of formatted text. <button onclick="fnD()">Play</button>
 </p>
 <pre class="prettyprint">
   var b = new Buffer(32); // Creates an empty buffer with a 32 character maximum line length.
@@ -260,7 +259,7 @@ Text buffers hold variable-length lines of formatted text. <button onclick="fnD(
 <h3>A Simple Text Log</h3>
 <p>
   If we always copy the last part of the buffer to the screen, we're effectively scrolling to the
-  bottom of the buffer: <button onclick="fnE()">Run</button>
+  bottom of the buffer: <button onclick="fnE()">Play</button>
 </p>
 <pre class="prettyprint">
   var b = new Buffer();
@@ -277,7 +276,7 @@ Text buffers hold variable-length lines of formatted text. <button onclick="fnD(
 </pre>
 <h3>A Browser Console</h3>
 <p>
-  The Screen.js Console class implements the Browser's Console API and writes its output into a buffer: <button onclick="fnF()">Run</button>
+  The Screen.js Console class implements the Browser's Console API and writes its output into a buffer: <button onclick="fnF()">Play</button>
 </p>
 <pre class="prettyprint">
   var b = new Buffer();
@@ -311,21 +310,24 @@ Text buffers hold variable-length lines of formatted text. <button onclick="fnD(
 <!--<button id="btnE" onclick="fnE()">E</button>-->
 <!--<button id="btnF" onclick="fnF()">F</button>-->
 
-<div id="debug" style="position: absolute; top: 40px"></div>
-
 <script>
   var elTerminalContainer = document.getElementById("terminalContainer");
   var elAnchors = document.getElementsByClassName("anchor");
   var elCurrentAnchor = null;
 
   function onScroll() {
-    for (var i = 0; i < elAnchors.length; i++) {
+    var elClosest = elAnchors[0];
+    var closest = Math.abs(elClosest.getBoundingClientRect().top);
+    for (var i = 1; i < elAnchors.length; i++) {
       var elAnchor = elAnchors[i];
-      if (elAnchor.getBoundingClientRect().top > 50) {
-        setAnchor(elAnchor);
+      var distance = Math.abs(elAnchor.getBoundingClientRect().top);
+      if (distance < closest) {
+        elClosest = elAnchor;
+        closest = distance;
         break;
       }
     }
+    setAnchor(elClosest);
   }
 
   window.addEventListener("scroll", onScroll);
@@ -375,8 +377,8 @@ Text buffers hold variable-length lines of formatted text. <button onclick="fnD(
   function playIntro() {
     var elTerminal = document.getElementById("terminal");
     removeAllChildren(elTerminal);
-    var s = new Terminal.Screen(elTerminal, 10);
-    s.backgroundColor = 0x333333;
+    var s = new Terminal.Screen(elTerminal, 12);
+    s.backgroundColor = 0x663366;
     s.moveTo(2, 3);
     s.writeString("Screen.js");
     s.moveTo(2, 4);
@@ -404,8 +406,9 @@ Text buffers hold variable-length lines of formatted text. <button onclick="fnD(
     var elTerminal = document.getElementById("terminal");
     removeAllChildren(elTerminal);
     var s = new Terminal.Screen(elTerminal, 4);
+    s.backgroundColor = 0x333366
     introInterval = setInterval(function () {
-      for (var i = 0; i < 1000; i++) {
+      for (var i = 0; i < 300; i++) {
         s.color = Terminal.makeColor(Math.random() * 256 | 0, Math.random() * 256 | 0, Math.random() * 256 | 0);
         var y = Math.random() * s.h | 0;
         s.moveTo(Math.random() * s.w, y);
@@ -429,8 +432,8 @@ Text buffers hold variable-length lines of formatted text. <button onclick="fnD(
     s.writeCharCode("H".charCodeAt(0)); // Write "H" at the current (x, y) position and advance to (x + 1, y).
     s.writeCharCode("e".charCodeAt(0));
     s.writeCharCode("l".charCodeAt(0));
-    s.writeCharCode("l".charCodeAt(0));
-    s.writeCharCode("o".charCodeAt(0));
+    s.writeCharCode("g".charCodeAt(0));
+    s.writeCharCode("Å".charCodeAt(0));
   }
 
   function fnB() {

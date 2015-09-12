@@ -314,7 +314,11 @@ module Terminal {
 
     private static glyphCount = 256;
 
-    constructor(public container: HTMLDivElement, public fontSize: number = 10) {
+    constructor(
+      public container: HTMLDivElement,
+      private fontSize: number = 10,
+      private font: string = "Input Mono Cond, Input Mono Condensed, Consolas, Courier, monospace"
+    ) {
       this.canvas = document.createElement("canvas");
       this.canvas.style.position = "absolute";
       container.appendChild(this.canvas);
@@ -338,6 +342,46 @@ module Terminal {
       this.initializeColorPaletteTexture();
       this.listenForContainerSizeChanges();
       this.enterRenderLoop();
+    }
+
+    private static measureText(fontStyle: string) {
+      var fontDraw = document.createElement("canvas");
+      var ctx = fontDraw.getContext('2d');
+      ctx.fillRect(0, 0, fontDraw.width, fontDraw.height);
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = 'white';
+      ctx.font = fontStyle;
+      var baseline = fontDraw.height - (fontDraw.height / 3 | 0);
+      ctx.fillText(String.fromCharCode(0) + 'gÅ', 10, baseline);
+      var pixels = ctx.getImageData(0, 0, fontDraw.width, fontDraw.height).data;
+      var start = -1;
+      var end = -1;
+      var w = fontDraw.width;
+      var h = fontDraw.height;
+      next:
+      for (var y = 0; y < h; y++)  {
+        for (var x = 0; x < w; x++) {
+          var i = (y * w + x) * 4;
+          if (pixels[i] !== 0) {
+            if (start === -1) {
+              start = end = y;
+            } else {
+              end = y;
+            }
+            continue next;
+          }
+        }
+      }
+      // Debug
+      // ctx.fillRect(0, baseline, 1000, 1);
+      // ctx.fillRect(0, start, 1000, 1);
+      // ctx.fillRect(0, end, 1000, 1);
+      // document.getElementById("debug").appendChild(fontDraw);
+      return {
+        height: end - start,
+        emHeightAscent: baseline - start + 1,
+        emHeightDescent: end - baseline + 1
+      };
     }
 
     private initialize() {
@@ -455,22 +499,22 @@ module Terminal {
     }
 
     private initializeSpriteSheet() {
-      var fontSize = this.fontSize * this.ratio;
+
       this.spriteCanvas = document.createElement("canvas");
       var context = this.spriteCanvas.getContext("2d");
       this.spriteCanvas.width = 2048;
-      this.spriteCanvas.height = 2048;
-      // context.fillStyle = "#000000";
-      // context.fillRect(0, 0, this.spriteCanvas.width, this.spriteCanvas.height);
+      this.spriteCanvas.height = 2048 * 2;
       context.clearRect(0, 0, this.spriteCanvas.width, this.spriteCanvas.height);
+      context.strokeStyle = "grey";
       context.fillStyle = "white";
-      var baseFont = fontSize + 'px Input Mono Condensed, Consolas, Courier, monospace'
+      var baseFont = (this.fontSize * this.ratio) + 'px ' + this.font;
+      var metrics = Screen.measureText("italic bold " + baseFont);
+      var fontHeight = metrics.height;
       context.font = baseFont;
-      context.textBaseline = "bottom";
-      var metrics = context.measureText("A");
-      var tileW = this.tileW = Math.ceil(metrics.width);
-      var tileHPadding = this.tileHPadding = Math.ceil((fontSize / 4 | 0) * this.ratio);
-      var tileH = this.tileH = tileHPadding + fontSize;
+      context.textBaseline = "alphabetic";
+      var tileW = this.tileW = context.measureText("A").width;
+      var tileHPadding = this.tileHPadding = 4;
+      var tileH = this.tileH = fontHeight + tileHPadding;
       var tileColumns = this.tileColumns = this.spriteCanvas.width / tileW | 0;
       var j = 0;
       var fontVariants = ["", "bold ", "italic ", "italic bold "];
@@ -479,8 +523,10 @@ module Terminal {
         for (var i = 0; i < Screen.glyphCount; i++) {
           var x = (j % tileColumns) | 0;
           var y = (j / tileColumns) | 0;
-          var c = String.fromCharCode(i)
-          context.fillText(c, x * tileW, fontSize + tileHPadding + y * tileH);
+          var c = String.fromCharCode(i);
+          // Debug
+          // context.strokeRect(x * tileW, y * tileH, tileW, tileH);
+          context.fillText(c, x * tileW, y * tileH + tileH - metrics.emHeightDescent);
           j++;
         }
       }
@@ -491,6 +537,7 @@ module Terminal {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.spriteCanvas);
+      // Debug
       // document.getElementById("debug").appendChild(this.spriteCanvas);
     }
 
